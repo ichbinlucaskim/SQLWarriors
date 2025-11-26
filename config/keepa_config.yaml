@@ -1,0 +1,21 @@
+# Keepa API Configuration
+
+api:
+  base_url: "https://keepa.com/1.0"
+  key: ${KEEPA_API_KEY:-}
+  rate_limit:
+    requests_per_second: 1
+    requests_per_minute: 60
+  timeout: 30
+  retries: 3
+
+extraction:
+  target_product_count: 100000
+  batch_size: 100
+  categories:
+    - "Electronics"
+    - "Books"
+    - "Home & Kitchen"
+    - "Sports & Outdoors"
+    - "Toys & Games"
+

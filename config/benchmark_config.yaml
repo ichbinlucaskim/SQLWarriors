@@ -1,0 +1,30 @@
+# Benchmark Configuration
+
+load_benchmarks:
+  bulk_load:
+    target_counts: [1000, 10000, 50000, 100000]
+    iterations: 3
+  incremental_load:
+    record_counts: [100, 1000, 10000]
+    iterations: 5
+
+query_benchmarks:
+  iterations: 10
+  warmup_iterations: 2
+  queries:
+    - pricing_trends
+    - top_products
+    - monthly_stats
+    - brand_performance
+
+resource_monitoring:
+  sample_interval: 1  # seconds
+  duration: 60  # seconds
+
+schema_evolution:
+  changes:
+    - add_column
+    - add_index
+    - modify_column
+    - add_table
+
