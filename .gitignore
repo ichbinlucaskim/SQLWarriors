@@ -29,9 +29,16 @@ ENV/
 Thumbs.db
 
 # Data files (large datasets)
-data/
+# Exclude all CSV data files to comply with Keepa API Terms of Service
+# Raw data files are not redistributable and must be provided separately
+data/*.csv
 *.csv
+
+# JSON files (exclude large data files, but keep benchmark results)
 *.json
+!benchmark_data.json
+
+# Other data formats
 *.parquet
 *.db
 *.sqlite
@@ -53,3 +60,4 @@ tmp/
 temp/
 *.tmp
 
+docker_data/

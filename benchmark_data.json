@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-12-07T20:59:29.832261",
+  "load_performance": {
+    "postgres_load_time": 271.17,
+    "mongodb_load_time": 758.76,
+    "postgres_throughput": 73833,
+    "mongodb_throughput": 145,
+    "note": "Actual measured load times: PostgreSQL 271.17s (4.52 min), MongoDB 758.76s (12.65 min)"
+  },
+  "query_performance": [
+    {
+      "query_name": "Price Trend by Category (12 months)",
+      "postgres_time": 19.82202132542928,
+      "mongodb_time": 14.006114880243937,
+      "faster": "MongoDB",
+      "speedup": 1.4152405213660542,
+      "postgres_results_count": 44,
+      "mongodb_results_count": 44
+    },
+    {
+      "query_name": "Top Products by Sales Rank Improvement (30 days, top 10)",
+      "postgres_time": 5.52698032061259,
+      "mongodb_time": Infinity,
+      "faster": "PostgreSQL",
+      "speedup": Infinity,
+      "postgres_results_count": 10,
+      "mongodb_results_count": 0
+    },
+    {
+      "query_name": "Brand Analysis (all brands)",
+      "postgres_time": 0.8792979717254639,
+      "mongodb_time": 3.9116463661193848,
+      "faster": "PostgreSQL",
+      "speedup": 4.448601602530123,
+      "postgres_results_count": 106447,
+      "mongodb_results_count": 106447
+    }
+  ],
+  "storage_size": {
+    "postgres_size_mb": 3184.785689353943,
+    "mongodb_size_mb": 2574.4221334457397
+  }
+}

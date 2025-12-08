@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:13
+    container_name: sqlwarriors_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-amazon_warehouse}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    env_file:
+      - .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker_data/postgres:/var/lib/postgresql/data
+      - ./postgres/schema:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sqlwarriors_network
+
+  mongodb:
+    image: mongo:5.0
+    container_name: sqlwarriors_mongodb
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-amazon_warehouse}
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - ./docker_data/mongodb:/data/db
+      - ./docker_data/mongodb_config:/data/configdb
+    command: mongod --wiredTigerCacheSizeGB 1
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sqlwarriors_network
+
+networks:
+  sqlwarriors_network:
+    driver: bridge
+

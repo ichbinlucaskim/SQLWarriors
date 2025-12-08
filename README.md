@@ -1,265 +1,344 @@
-# SQLWarriors - Comparative Data Warehouse Design
+# Comparative Data Warehouse Evaluation: PostgreSQL vs. MongoDB
 
-**Comparative Data Warehouse Design and Evaluation using Live Amazon Product Data: PostgreSQL vs. MongoDB**
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13-336791.svg?logo=postgresql)
+![MongoDB](https://img.shields.io/badge/MongoDB-5.0-47A248.svg?logo=mongodb)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-Team Members:
-- **Philip Anand** - ETL Lead
-- **Kevin Perez** - SQL Warehouse Architect  
-- **Lucas Kim** - NoSQL Warehouse Architect / Documentation
+---
 
-## Project Overview
+## Executive Summary
 
-This project compares PostgreSQL and MongoDB for data warehouse implementations using real Amazon product data from the Keepa API. We evaluate schema design, ingestion throughput, analytical query performance, and operational complexity across both database paradigms.
+This project presents a comprehensive comparative evaluation of **PostgreSQL** (relational) and **MongoDB** (document-oriented) database paradigms for data warehousing applications. We benchmark both systems using **110,000+ Amazon product records** with **20+ million time-series data points**, measuring ingestion performance, analytical query execution, and storage efficiency under identical workloads. Our empirical analysis provides data-driven recommendations for database selection in analytical data warehousing scenarios, revealing significant performance trade-offs between normalized and denormalized schema designs.
 
-## Research Questions
+---
 
-1. How does each database manage schema design, ingestion throughput, and analytical queries with rapidly changing product, price, and sales data?
-2. What modeling decisions and challenges arise when implementing data warehouse concepts (star schemas, historical tracking) in document-oriented versus relational paradigms?
-3. Where does each platform excel or face limitations in bulk import speed, query performance, schema evolution, and developer experience?
+## Key Results
 
-## Dataset
+### Benchmark Visualization
 
-- **Source**: Keepa API (Amazon product information, pricing trends, sales rankings)
-- **Target**: 100,000+ unique product listings
-- **Data Types**:
-  - Products: ASIN, title, category, brand, features, descriptions
-  - Price History: Daily price records, offer counts, timestamps
-  - Sales/Reviews: Sales rank and review statistics
+![Benchmark Results](docs/results/benchmark_results.png)
+
+### Performance Summary
+
+| Metric | PostgreSQL | MongoDB | Winner |
+| :--- | :--- | :--- | :--- |
+| **Bulk Load Time** | ~4.5 mins (271s) | ~12.6 mins (759s) | 🏆 PostgreSQL (2.8x faster) |
+| **Simple Read (Price Trends)** | 19.82s | 14.01s | 🏆 MongoDB (1.42x faster) |
+| **Complex Analytics (Ranking)** | 5.53s | Failed (Memory Error) | 🏆 PostgreSQL |
+| **Brand Analysis (Aggregations)** | 0.88s | 3.91s | 🏆 PostgreSQL (4.45x faster) |
+| **Storage Size** | ~3.1 GB | ~2.5 GB | 🏆 MongoDB (19% smaller) |
+
+**Key Finding:** PostgreSQL excels at bulk data ingestion (2.8x faster) and complex analytical queries, while MongoDB shows advantages in simple read operations through data locality. However, MongoDB encounters memory limitations on complex analytical workloads.
+
+---
+
+## 📚 Documentation Index
+
+For detailed technical information, refer to the following comprehensive documents:
+
+### 📖 [Final Technical Report](docs/FINAL_TECHNICAL_REPORT.md)
+
+In-depth analysis covering system architecture, implementation challenges, benchmark methodology, detailed performance results, and evidence-based recommendations for database selection in data warehousing scenarios.
+
+### 🗂 [Data Dictionary](data/DATA_DICTIONARY.md)
+
+Complete dataset schema documentation including field definitions, data types, relationships, foreign key constraints, and data quality specifications. **Note:** Raw CSV data files are git-ignored per Keepa API Terms of Service.
+
+### ✅ [Project Management Log](docs/PROJECT_MANAGEMENT_LOG.md)
+
+Comprehensive record of project execution including team role assignments, task breakdown by phase, individual contributions, timeline, and deliverables. Documents the complete development history from initial setup to final deliverables.
+
+### 📈 [Schema Design](docs/schema_design.md)
+
+Detailed database modeling documentation covering PostgreSQL's normalized star schema design, MongoDB's embedded document strategy, indexing strategies, query patterns, and design rationale for both paradigms.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Docker Desktop** (for containerized databases)
+- **Python 3.9+** with pip
+- **Git** (for cloning the repository)
+
+### Step 1: Clone & Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/ichbinlucaskim/SQLWarriors.git
+cd SQLWarriors
+
+# Copy environment template (if .env.example exists)
+cp .env.example .env
+
+# Create Python virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+```
+
+### Step 2: Start Docker Containers
+
+```bash
+# Start PostgreSQL and MongoDB containers
+docker-compose up -d
+
+# Verify containers are running (should show both as "Up (healthy)")
+docker-compose ps
+```
+
+**Expected Output:**
+```
+NAME                   STATUS          PORTS
+sqlwarriors_postgres   Up (healthy)    0.0.0.0:5433->5432/tcp
+sqlwarriors_mongodb    Up (healthy)    0.0.0.0:27017->27017/tcp
+```
+
+**Note:** PostgreSQL is mapped to port **5433** (instead of 5432) to avoid conflicts with local installations. MongoDB uses the standard port 27017.
+
+### Step 3: Verify Database Connections
+
+```bash
+# Test database connections
+python analysis/test_db_connection.py
+```
+
+**Expected Output:**
+```
+✓ PostgreSQL: CONNECTED
+✓ MongoDB: CONNECTED
+```
+
+### Step 4: Run Benchmarks
+
+```bash
+# Full benchmark (includes data loading - takes ~15-20 minutes)
+# This loads 20+ million records into both databases
+python analysis/generate_dashboard.py
+
+# Quick benchmark (skips data loading if data already exists)
+# Use this for subsequent runs after initial data load
+python analysis/generate_dashboard.py --skip-load
+```
+
+**Results Location:**
+- `benchmark_results.png` - Performance visualization charts
+- `benchmark_data.json` - Raw benchmark metrics in JSON format
+
+---
+
+## Docker Container Management
+
+### Common Commands
+
+```bash
+# Start containers (background mode)
+docker-compose up -d
+
+# Stop containers (data preserved in volumes)
+docker-compose stop
+
+# Restart containers
+docker-compose restart
+
+# Stop and remove containers (data preserved)
+docker-compose down
+
+# Stop and remove containers and volumes (⚠️ deletes all data)
+docker-compose down -v
+
+# View logs
+docker-compose logs -f              # All logs
+docker-compose logs -f postgres     # PostgreSQL only
+docker-compose logs -f mongodb      # MongoDB only
+```
+
+### Accessing Databases
+
+```bash
+# PostgreSQL interactive shell
+docker-compose exec postgres psql -U postgres -d amazon_warehouse
+
+# MongoDB interactive shell
+docker-compose exec mongodb mongosh
+```
+
+### Data Persistence
+
+Database data is stored in local volume mounts:
+- **PostgreSQL:** `./docker_data/postgres/`
+- **MongoDB:** `./docker_data/mongodb/`
+
+These directories persist data when containers are stopped or removed (unless using `docker-compose down -v`). The `docker_data/` folder is excluded from version control.
+
+---
+
+## Troubleshooting
+
+### Port Conflicts
+
+If ports 5433 or 27017 are already in use:
+
+```bash
+# Check what's using the ports
+lsof -i :5433
+lsof -i :27017
+
+# Stop conflicting services (macOS example)
+brew services stop postgresql@17
+brew services stop mongodb-community@7.0
+```
+
+**Alternative:** Edit `docker-compose.yml` to use different ports, then update `.env` accordingly.
+
+### Container Startup Issues
+
+```bash
+# View detailed error logs
+docker-compose logs
+
+# Rebuild and restart containers
+docker-compose down
+docker-compose up -d --build
+
+# Check container health status
+docker-compose ps
+```
+
+### Connection Errors
+
+```bash
+# Verify containers are healthy
+docker-compose ps
+
+# Check database logs for errors
+docker-compose logs postgres | tail -50
+docker-compose logs mongodb | tail -50
+
+# Verify environment variables
+cat .env
+```
+
+### Memory Issues
+
+- **MongoDB Complex Queries:** May require `allowDiskUse: true` for large aggregation pipelines
+- **Python OOM:** Reduce chunk sizes in ETL loaders or increase Docker Desktop memory allocation
+
+---
 
 ## Project Structure
 
 ```
 SQLWarriors/
-├── README.md                 # This file
-├── requirements.txt          # Python dependencies
-├── .env.example              # Environment variables template
-├── .gitignore                # Git ignore rules
+├── README.md                          # This file (central hub)
+├── docker-compose.yml                 # Docker orchestration
+├── requirements.txt                   # Python dependencies
+├── .env.example                       # Environment variables template
 │
-├── etl/                      # ETL Pipeline (Philip)
-│   ├── __init__.py
-│   ├── keepa_client.py      # Keepa API client wrapper
-│   ├── extractor.py         # Data extraction logic
-│   ├── transformer.py       # Data cleaning and transformation
-│   ├── loader_postgres.py   # PostgreSQL data loader
-│   ├── loader_mongodb.py    # MongoDB data loader
-│   ├── pipeline.py          # Main ETL orchestration
-│   └── utils.py             # Helper functions
+├── data/                              # CSV source files (git-ignored)
+│   ├── products.csv
+│   ├── price_history.csv
+│   ├── sales_rank_history.csv
+│   ├── product_metrics.csv
+│   └── DATA_DICTIONARY.md            # Dataset schema documentation
 │
-├── postgres/                 # PostgreSQL Warehouse (Kevin)
+├── etl/                               # ETL Pipeline
+│   ├── loader_postgres_csv.py        # PostgreSQL bulk loader
+│   └── loader_mongodb_csv.py         # MongoDB document loader
+│
+├── postgres/                          # PostgreSQL Implementation
 │   ├── schema/
-│   │   ├── create_tables.sql    # Table definitions
-│   │   ├── create_indexes.sql   # Index creation
-│   │   └── create_views.sql     # Analytical views
+│   │   ├── create_tables_csv.sql     # Table definitions
+│   │   ├── create_indexes.sql        # Index creation
+│   │   └── create_views.sql          # Analytical views
 │   ├── queries/
-│   │   ├── analytical_queries.sql    # Benchmark queries
-│   │   └── performance_tests.sql    # Performance evaluation
-│   └── config.py            # PostgreSQL connection config
+│   │   └── analytical_queries.sql    # Benchmark queries
+│   └── config.py                     # Connection configuration
 │
-├── mongodb/                  # MongoDB Warehouse (Lucas)
+├── mongodb/                           # MongoDB Implementation
 │   ├── schema/
-│   │   ├── collections.py       # Collection definitions
-│   │   └── indexes.py            # Index creation
+│   │   ├── collections.py            # Collection definitions
+│   │   └── indexes.py                # Index creation
 │   ├── queries/
-│   │   ├── aggregation_pipelines.py  # Analytical queries
-│   │   └── performance_tests.py       # Performance evaluation
-│   └── config.py            # MongoDB connection config
+│   │   └── aggregation_pipelines.py  # Benchmark queries
+│   └── config.py                     # Connection configuration
 │
-├── benchmarks/               # Benchmarking Scripts
-│   ├── __init__.py
-│   ├── load_performance.py  # Bulk/incremental load benchmarks
-│   ├── query_performance.py # Query latency benchmarks
-│   ├── resource_usage.py    # CPU/memory/storage monitoring
-│   └── schema_evolution.py  # Schema change evaluation
+├── benchmarks/                        # Benchmarking Scripts
+│   ├── load_performance.py           # Ingestion benchmarks
+│   └── query_performance.py          # Query latency benchmarks
 │
-├── notebooks/                # Jupyter Notebooks
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_etl_pipeline.ipynb
-│   ├── 03_postgres_analysis.ipynb
-│   ├── 04_mongodb_analysis.ipynb
-│   ├── 05_comparative_analysis.ipynb
-│   └── 06_visualizations.ipynb
+├── analysis/                          # Analysis & Visualization
+│   ├── generate_dashboard.py         # Automated benchmark suite
+│   └── test_db_connection.py         # Connection diagnostics
 │
-├── visualizations/           # Visualization Scripts
-│   ├── __init__.py
-│   ├── dashboards.py        # Interactive dashboards
-│   └── charts.py            # Static charts (matplotlib/seaborn)
-│
-├── config/                   # Configuration Files
-│   ├── database.yaml         # Database connection settings
-│   ├── keepa_config.yaml     # Keepa API configuration
-│   └── benchmark_config.yaml # Benchmark parameters
-│
-├── tests/                    # Unit Tests
-│   ├── __init__.py
-│   ├── test_etl.py
-│   ├── test_postgres.py
-│   └── test_mongodb.py
-│
-└── docs/                     # Documentation
-    ├── setup_guide.md        # Environment setup instructions
-    ├── schema_design.md      # Schema design decisions
-    └── results/              # Final results and reports
+└── docs/                              # Documentation
+    ├── FINAL_TECHNICAL_REPORT.md     # Comprehensive technical report
+    ├── PROJECT_MANAGEMENT_LOG.md     # Project execution log
+    ├── schema_design.md              # Database modeling details
+    └── results/
+        └── benchmark_results.png     # Benchmark visualization
 ```
 
-## Setup Instructions
+---
 
-### Prerequisites
+## Dataset Overview
 
-- Python 3.8+
-- PostgreSQL 12+
-- MongoDB 4.4+
-- Docker (optional, for containerized databases)
-- Keepa API key
+- **Products:** 109,992 unique product records
+- **Price History:** 9,899,280 time-series records (~90 per product)
+- **Sales Rank History:** 9,899,280 time-series records (~90 per product)
+- **Total Records:** 20,018,544 rows across all tables
+- **Data Format:** CSV files with standardized schema
 
-### Installation
+**Note:** Raw CSV data files are not included in this repository due to Keepa API Terms of Service. Users must place the CSV files in the `data/` directory manually to run the ETL pipeline. See [Data Dictionary](data/DATA_DICTIONARY.md) for detailed schema specifications.
 
-1. Clone the repository:
-```bash
-git clone https://github.com/ichbinlucaskim/SQLWarriors.git
-cd SQLWarriors
-```
+---
 
-2. Create virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+## Technologies
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+- **Python 3.9+** - ETL pipeline and benchmarking
+- **PostgreSQL 13** - Relational database with optimized query engine
+- **MongoDB 5.0** - Document database with embedded document model
+- **Docker Compose** - Container orchestration for reproducible environments
+- **Pandas** - Data processing and transformation
+- **Matplotlib/Seaborn** - Visualization and reporting
+- **Psycopg2** - PostgreSQL Python driver
+- **PyMongo** - MongoDB Python driver
 
-4. Configure environment:
-```bash
-cp .env.example .env
-# Edit .env with your database credentials and Keepa API key
-```
+---
 
-5. Set up databases:
-```bash
-# PostgreSQL
-psql -U postgres -f postgres/schema/create_tables.sql
+## Authors
 
-# MongoDB
-python mongodb/schema/collections.py
-```
+- **Philip Anand** - Data Mining Lead
+- **Kevin Perez** - SQL Warehouse Architect
+- **Lucas Kim** - Lead Data Engineer & System Architect
 
-## Team Roles & Responsibilities
+**Course:** CMSI-620 Database Systems  
+**Institution:** Loyola Marymount University  
+**Project Duration:** November 25, 2025 - December 9, 2025
 
-### Philip Anand - ETL Lead
-**Primary Responsibilities:**
-- [ ] Design and implement Keepa API client wrapper
-- [ ] Build data extraction pipeline (100,000+ products)
-- [ ] Implement data cleaning and transformation logic
-- [ ] Create PostgreSQL and MongoDB loaders
-- [ ] Set up automated ETL jobs (APScheduler/cron)
-- [ ] Handle data deduplication and validation
-- [ ] Monitor ETL performance and error handling
-
-**Key Deliverables:**
-- `etl/keepa_client.py` - API integration
-- `etl/pipeline.py` - Main ETL orchestration
-- Automated refresh scheduling
-- Data quality reports
-
-### Kevin Perez - SQL Warehouse Architect
-**Primary Responsibilities:**
-- [ ] Design normalized PostgreSQL schema (products, price_history, reviews)
-- [ ] Create primary/foreign key relationships
-- [ ] Design and implement indexing strategy for analytics
-- [ ] Write optimized analytical queries
-- [ ] Create materialized views for common aggregations
-- [ ] Benchmark PostgreSQL query performance
-- [ ] Document schema design decisions
-
-**Key Deliverables:**
-- `postgres/schema/create_tables.sql` - Complete schema
-- `postgres/queries/analytical_queries.sql` - Benchmark queries
-- Performance optimization documentation
-- Query execution plans and analysis
-
-### Lucas Kim - NoSQL Warehouse Architect
-**Primary Responsibilities:**
-- [ ] Design MongoDB schema (embedded vs. referenced documents)
-- [ ] Implement collection structures and indexes
-- [ ] Build aggregation pipelines for analytical queries
-- [ ] Benchmark MongoDB ingestion throughput
-- [ ] Evaluate schema flexibility and evolution
-- [ ] Compare denormalization strategies
-- [ ] Document NoSQL modeling decisions
-
-**Key Deliverables:**
-- `mongodb/schema/collections.py` - Collection definitions
-- `mongodb/queries/aggregation_pipelines.py` - Analytical queries
-- Schema evolution documentation
-- Throughput and performance metrics
-
-### Shared Responsibilities
-- [ ] Cross-validate data integrity between both systems
-- [ ] Collaborate on benchmarking scripts
-- [ ] Create visualizations and dashboards
-- [ ] Write final report and presentation
-- [ ] Code reviews and testing
-
-## Timeline
-
-### Week 1 (Nov 25 – Dec 1)
-- **Nov 25**: Proposal submission ✅
-- **Nov 26–27**: Environment setup (deploy databases, configure Python/API)
-- **Nov 28–29**: Finalize schemas, prototype ETL with sample data
-- **Nov 30–Dec 1**: Execute bulk extraction, initial loads, validate data integrity
-
-### Week 2 (Dec 2 – Dec 8)
-- **Dec 2–3**: Run benchmarking scripts (load times, storage, resources)
-- **Dec 4–5**: Execute analytical queries, document performance
-- **Dec 6–7**: Create visualizations, compile findings into presentation
-- **Dec 8**: Final rehearsal and deliverable preparation
-
-### Dec 9
-- **Final Presentation and Demonstration**
-
-## Benchmarking Metrics
-
-We will measure and compare:
-
-1. **Ingestion Performance**
-   - Bulk load time (100,000+ records)
-   - Incremental load time
-   - Throughput (records/second)
-
-2. **Query Performance**
-   - Simple queries (single table/collection)
-   - Complex analytical queries (joins/aggregations)
-   - Query latency (p50, p95, p99)
-
-3. **Resource Utilization**
-   - CPU usage
-   - Memory consumption
-   - Storage footprint
-
-4. **Schema Evolution**
-   - Schema change implementation time
-   - Downtime during migrations
-   - Data migration complexity
-
-## Tools & Technologies
-
-- **Python**: ETL pipeline, benchmarking
-- **SQLAlchemy**: PostgreSQL ORM
-- **Psycopg2**: PostgreSQL driver
-- **PyMongo**: MongoDB driver
-- **Keepa API**: Data source
-- **Jupyter Notebooks**: Interactive analysis
-- **Tableau/Grafana**: Dashboards
-- **Matplotlib/Seaborn**: Visualizations
-- **Docker**: Containerized databases
-- **APScheduler**: Automated ETL jobs
-
-## Repository
-
-GitHub: https://github.com/ichbinlucaskim/SQLWarriors
+---
 
 ## License
 
-This project is for academic purposes (CMSI-620 Final Project).
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+**Academic Context:** This project was developed as part of CMSI-620 (Database Systems) coursework at Loyola Marymount University, focusing on practical evaluation of database paradigms in real-world data warehousing scenarios.
+
+---
+
+## Acknowledgments
+
+- **Database Communities:** PostgreSQL and MongoDB open-source communities for excellent documentation and tools
+- **Instructors:** CMSI-620 faculty for project guidance and feedback
+- **Dataset Source:** CSV-based Amazon product data for e-commerce analytics benchmarking
+
+---
+
+## Contributing
+
+This is an academic research project. For questions or collaboration inquiries, please open an issue or contact the project maintainers.
