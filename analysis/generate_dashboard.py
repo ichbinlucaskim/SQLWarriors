@@ -273,28 +273,48 @@ class BenchmarkDashboard:
                 postgres_times.append(query_result.get('postgres_time', 0))
                 mongodb_times.append(query_result.get('mongodb_time', 0))
             
-            # Handle infinite values
-            postgres_times = [t if t != float('inf') else 0 for t in postgres_times]
-            mongodb_times = [t if t != float('inf') else 0 for t in mongodb_times]
+            # Handle infinite values - mark as failed
+            postgres_times_clean = []
+            mongodb_times_clean = []
+            mongodb_failed = []
+            
+            for i, (pg_time, mongo_time) in enumerate(zip(postgres_times, mongodb_times)):
+                postgres_times_clean.append(pg_time if pg_time != float('inf') else 0)
+                if mongo_time == float('inf') or mongo_time == 0:
+                    mongodb_times_clean.append(0)
+                    mongodb_failed.append(i)
+                else:
+                    mongodb_times_clean.append(mongo_time)
+                    mongodb_failed.append(None)
             
             x = np.arange(len(query_names))
             width = 0.35
             
-            bars2_1 = ax2.bar(x - width/2, postgres_times, width, 
+            bars2_1 = ax2.bar(x - width/2, postgres_times_clean, width, 
                              label='PostgreSQL', color='#2E86AB', alpha=0.8, 
                              edgecolor='black', linewidth=1.5)
-            bars2_2 = ax2.bar(x + width/2, mongodb_times, width,
+            bars2_2 = ax2.bar(x + width/2, mongodb_times_clean, width,
                              label='MongoDB', color='#06A77D', alpha=0.8,
                              edgecolor='black', linewidth=1.5)
             
             # Add value annotations
-            for bars in [bars2_1, bars2_2]:
-                for bar in bars:
-                    height = bar.get_height()
-                    if height > 0:
-                        ax2.text(bar.get_x() + bar.get_width()/2., height,
-                                f'{height:.3f}s',
-                                ha='center', va='bottom', fontsize=9, fontweight='bold')
+            for i, (bar, height) in enumerate(zip(bars2_1, postgres_times_clean)):
+                if height > 0:
+                    ax2.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{height:.3f}s',
+                            ha='center', va='bottom', fontsize=9, fontweight='bold')
+            
+            for i, (bar, height) in enumerate(zip(bars2_2, mongodb_times_clean)):
+                if mongodb_failed[i] is not None:
+                    # Show "Failed" annotation for failed queries
+                    ax2.text(bar.get_x() + bar.get_width()/2., ax2.get_ylim()[1] * 0.05,
+                            'Failed',
+                            ha='center', va='bottom', fontsize=9, fontweight='bold',
+                            color='red', style='italic')
+                elif height > 0:
+                    ax2.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{height:.3f}s',
+                            ha='center', va='bottom', fontsize=9, fontweight='bold')
             
             ax2.set_ylabel('Query Latency (seconds)', fontsize=12, fontweight='bold')
             ax2.set_title('Query Latency Comparison', fontsize=14, fontweight='bold', pad=15)

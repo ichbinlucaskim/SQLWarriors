@@ -353,23 +353,57 @@ db.products.aggregate([
 
 **Performance:**
 - Execution Time: Failed (Memory Limit Exceeded)
-- Error: `Sort exceeded memory limit of 104857600 bytes`
+- Error: `PlanExecutor error during aggregation: Sort exceeded memory limit of 104857600 bytes, but did not opt in to external sorting`
 - **Status:** Failed
 
 **Analysis:**
-PostgreSQL's success is due to:
-1. **Query Optimizer:** PostgreSQL's cost-based optimizer selects efficient execution plans for window functions and subqueries
-2. **Memory Management:** Handles large intermediate result sets through disk-based sorting when necessary
-3. **Index Utilization:** Effectively uses indexes on (`asin`, `date`) to minimize scan operations
 
-MongoDB's failure is due to:
-1. **Memory Constraints:** Default 100 MB sort memory limit is insufficient for unwinding 110,000 documents with 90 history records each (producing ~10 million intermediate documents)
-2. **Pipeline Complexity:** Multiple grouping and sorting stages consume memory before the final limit stage can reduce result set size
-3. **No Disk Use:** Without `allowDiskUse: true`, MongoDB cannot spill to disk for large sorts
+**PostgreSQL's Success Factors:**
 
-**Production Workaround:** Enable `allowDiskUse: true` or pre-aggregate rank improvements during data load. However, this represents an operational overhead not present in PostgreSQL.
+1. **Advanced Query Optimizer:** PostgreSQL's cost-based query optimizer evaluates multiple execution plans and selects the most efficient strategy for complex window functions and correlated subqueries. The optimizer recognizes that the `LIMIT 10` clause can be combined with sorting operations, allowing it to employ top-N heap sort algorithms that minimize memory usage.
 
-**Conclusion:** PostgreSQL's robust query optimizer and flexible memory management make it superior for complex analytical queries involving window functions and large intermediate result sets.
+2. **Flexible Memory Management:** PostgreSQL's sorting algorithms automatically spill to disk when intermediate result sets exceed available memory. The system transparently handles large datasets through external merge-sort operations without requiring explicit configuration, ensuring queries succeed regardless of dataset size.
+
+3. **Index Utilization:** The composite index on (`asin`, `date`) in `sales_rank_history` enables efficient index scans rather than full table scans. PostgreSQL's optimizer leverages these indexes to minimize I/O operations and reduce memory footprint during query execution.
+
+4. **Native Window Function Support:** PostgreSQL's native window function implementation is optimized for analytical queries, allowing efficient computation of rank comparisons and temporal aggregations without materializing large intermediate result sets.
+
+**MongoDB's Failure Mechanisms:**
+
+1. **Memory Constraint Breakdown:** The aggregation pipeline's execution flow creates a cascading memory problem:
+   - **Stage 1 - Unwind:** 110,000 product documents × ~90 history records = approximately 9.9 million intermediate documents created in memory
+   - **Stage 2 - Match:** Filters to ~30 days of data, but still processes millions of documents
+   - **Stage 3 - Sort (First):** Sorts by ASIN and date, requiring memory allocation for all matching documents
+   - **Stage 4 - Group:** Aggregates by ASIN, creating arrays of rank history in memory
+   - **Stage 5 - Project:** Complex `$map` operations with nested `$arrayElemAt` create additional intermediate arrays
+   - **Stage 6 - Unwind (Second):** Expands rank_improvements arrays, again creating millions of documents
+   - **Stage 7 - Sort (Final):** Attempts to sort by `rank_improvements.rank_change` across millions of documents → **Memory Limit Exceeded**
+
+2. **Pipeline Execution Model Limitation:** MongoDB processes aggregation pipelines stage-by-stage, materializing intermediate results between stages. Unlike PostgreSQL's query optimizer which can push down predicates and combine operations, MongoDB cannot optimize across stages to reduce memory usage before the final `$limit` stage.
+
+3. **In-Memory Sort Constraint:** MongoDB's default configuration restricts sorting operations to 100 MB of RAM. When the sort operation attempts to order millions of documents by rank change, it exceeds this limit. Without `allowDiskUse: true`, MongoDB cannot spill intermediate results to disk, causing query failure.
+
+4. **Document Model Overhead:** The embedded document structure, while beneficial for simple queries, creates memory pressure when unwinding large arrays. Each unwound document retains references to parent document fields, increasing memory footprint compared to normalized relational structures.
+
+**Technical Insight - Why the Limit Stage Doesn't Help:**
+
+A critical insight is that MongoDB cannot apply the `$limit: 10` optimization before the `$sort` stage completes. The sort operation must process the entire intermediate result set to determine the top 10 values, unlike PostgreSQL's query planner which can employ limit-aware sorting algorithms that stop processing after identifying the required number of results.
+
+**Production Workaround Options:**
+
+1. **Enable Disk Use:** Add `allowDiskUse: true` to aggregation options. This allows MongoDB to use temporary disk storage for large sorts but introduces I/O overhead and significantly slower query performance.
+
+2. **Pre-aggregation Strategy:** Compute rank improvements during data load and store them as denormalized fields in product documents. This eliminates the need for complex runtime aggregation but increases storage requirements and reduces data freshness.
+
+3. **Pagination Approach:** Process data in smaller date ranges or ASIN subsets, then merge results. This adds application complexity and may produce inconsistent results if data changes between pagination calls.
+
+4. **Schema Redesign:** Consider a hybrid approach with separate collections for rank improvements, trading document model benefits for query performance. This undermines the embedded document design philosophy.
+
+**Conclusion:**
+
+PostgreSQL's architectural advantages in complex analytical workloads are evident: its robust query optimizer, automatic disk-based sorting, and native window function support enable successful execution of queries that exceed MongoDB's default memory constraints. While MongoDB's embedded document model excels for read-heavy, access-pattern-specific queries, its in-memory processing limitations require explicit configuration tuning for complex analytical operations—an operational overhead that PostgreSQL handles transparently.
+
+This comparison highlights a fundamental trade-off: MongoDB's document model prioritizes data locality and simple query patterns, while PostgreSQL's relational model with sophisticated query optimization prioritizes flexible, complex analytical capabilities. For data warehousing scenarios requiring ad-hoc complex queries, PostgreSQL's automatic memory management and query optimization provide significant operational advantages.
 
 #### Query 3: Brand Analysis (All Brands)
 
