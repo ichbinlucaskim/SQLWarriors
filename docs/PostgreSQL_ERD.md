@@ -4,7 +4,7 @@
 
 > **Note:** GitHub automatically renders the Mermaid diagram below. Image versions (PNG/SVG) are also available in `docs/images/` directory.
 
-![PostgreSQL ERD](images/postgresql_erd.png)
+<!-- ![PostgreSQL ERD](images/postgresql_erd.png) -->
 
 ### Interactive Diagram (GitHub Renders Automatically)
 
