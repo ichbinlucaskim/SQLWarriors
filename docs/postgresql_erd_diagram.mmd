@@ -1,0 +1,54 @@
+erDiagram
+    PRODUCTS {
+        varchar asin PK "Primary Key"
+        text title
+        varchar brand
+        varchar source_category
+        numeric current_price
+        numeric current_sales_rank
+        numeric rating
+        int review_count
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    PRICE_HISTORY {
+        serial id PK "Primary Key"
+        varchar asin FK "Foreign Key"
+        date date
+        numeric price_usd
+        varchar source_category "Denormalized"
+        varchar brand "Denormalized"
+        varchar price_bucket
+        timestamp created_at
+    }
+    
+    SALES_RANK_HISTORY {
+        serial id PK "Primary Key"
+        varchar asin FK "Foreign Key"
+        date date
+        numeric sales_rank
+        varchar source_category "Denormalized"
+        varchar brand "Denormalized"
+        varchar rank_bucket
+        timestamp created_at
+    }
+    
+    PRODUCT_METRICS {
+        serial id PK "Primary Key"
+        varchar asin FK "Foreign Key (Unique)"
+        varchar source_category
+        varchar brand
+        numeric current_price
+        numeric current_rating
+        int review_count
+        numeric current_sales_rank
+        int monthly_sold
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    PRODUCTS ||--o{ PRICE_HISTORY : "has many (1:N)"
+    PRODUCTS ||--o{ SALES_RANK_HISTORY : "has many (1:N)"
+    PRODUCTS ||--|| PRODUCT_METRICS : "has one (1:1)"
+

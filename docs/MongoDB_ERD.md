@@ -2,6 +2,12 @@
 
 ## Collection: products (Denormalized Document Model)
 
+> **Note:** GitHub automatically renders the Mermaid diagram below. Image versions (PNG/SVG) are also available in `docs/images/` directory.
+
+![MongoDB ERD](images/mongodb_erd.png)
+
+### Interactive Diagram (GitHub Renders Automatically)
+
 ```mermaid
 erDiagram
     PRODUCTS {
