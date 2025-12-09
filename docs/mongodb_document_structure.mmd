@@ -1,0 +1,12 @@
+graph TD
+    A["products Collection<br/>(110,000 documents)"] --> B["Document Structure"]
+    B --> C["Product Fields<br/>(_id, asin, title, brand, etc.)"]
+    B --> D["price_history[]<br/>(Embedded Array<br/>~90 records)"]
+    B --> E["sales_rank_history[]<br/>(Embedded Array<br/>~90 records)"]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#e8f5e9
+    style D fill:#fce4ec
+    style E fill:#fce4ec
+
