@@ -103,7 +103,7 @@ MongoDB employs a denormalized document model with embedded arrays:
       asin: "B0DGHMNQ5Z",
       title: "Product Title",
       brand: "Brand Name",
-      source_category: "Electronics",
+      category: "Electronics",
       current_price: 19.9,
       current_sales_rank: 1.0,
       rating: 4.5,
@@ -122,7 +122,7 @@ MongoDB employs a denormalized document model with embedded arrays:
 **Indexes:**
 - Unique index on `asin`
 - Indexes on embedded array fields: `price_history.date`, `sales_rank_history.date`
-- Indexes on `brand` and `source_category` for filtering
+- Indexes on `brand` and `category` for filtering
 
 **Design Rationale:** Embedding eliminates JOIN operations by storing related data in a single document, providing data locality benefits and reducing query latency for read-heavy access patterns where the entire document is typically accessed together.
 
@@ -162,7 +162,7 @@ Implemented a Docker Compose architecture to provide:
 - Implemented PostgreSQL's native `COPY` command for bulk data loading
 - Pre-processed CSV files using Pandas to handle type conversions (e.g., float to integer for `review_count`)
 - Used `copy_expert()` with optimized CSV parsing parameters
-- **Performance:** Achieved 77,547 rows/second throughput
+- **Performance:** Achieved 73,833 rows/second throughput
 
 **MongoDB Approach:**
 - Implemented chunked processing using Pandas `chunksize` parameter to manage memory
@@ -247,13 +247,17 @@ MongoDB's slower performance is due to:
 **PostgreSQL Query:**
 ```sql
 SELECT 
-    DATE_TRUNC('month', date) AS month,
-    source_category,
-    AVG(price_usd) AS avg_price
+    source_category as category,
+    DATE_TRUNC('month', date)::DATE as month,
+    COUNT(DISTINCT asin) as product_count,
+    AVG(price_usd) as avg_price,
+    MIN(price_usd) as min_price,
+    MAX(price_usd) as max_price,
+    STDDEV(price_usd) as price_stddev
 FROM price_history
 WHERE date >= CURRENT_DATE - INTERVAL '12 months'
-GROUP BY DATE_TRUNC('month', date), source_category
-ORDER BY month, source_category;
+GROUP BY source_category, DATE_TRUNC('month', date)
+ORDER BY month DESC, category;
 ```
 
 **Performance:**
@@ -265,14 +269,26 @@ ORDER BY month, source_category;
 db.products.aggregate([
   { $unwind: "$price_history" },
   { $match: { "price_history.date": { $gte: startDate } } },
+  { $addFields: { year_month: { $substr: ["$price_history.date", 0, 7] } } },
   { $group: {
-      _id: {
-        month: { $dateTrunc: { date: "$price_history.date", unit: "month" } },
-        category: "$source_category"
-      },
-      avg_price: { $avg: "$price_history.price_usd" }
+      _id: { category: "$category", year_month: "$year_month" },
+      product_count: { $addToSet: "$asin" },
+      avg_price: { $avg: "$price_history.price_usd" },
+      min_price: { $min: "$price_history.price_usd" },
+      max_price: { $max: "$price_history.price_usd" },
+      price_stddev: { $stdDevPop: "$price_history.price_usd" }
   }},
-  { $sort: { "_id.month": 1, "_id.category": 1 } }
+  { $project: {
+      category: "$_id.category",
+      month: { $concat: ["$_id.year_month", "-01"] },
+      product_count: { $size: "$product_count" },
+      avg_price: 1,
+      min_price: 1,
+      max_price: 1,
+      price_stddev: 1,
+      _id: 0
+  }},
+  { $sort: { month: -1, category: 1 } }
 ])
 ```
 
@@ -288,8 +304,9 @@ MongoDB's superior performance is attributed to:
 3. **Simplified Pipeline:** Unwind and group operations are optimized for array processing
 
 PostgreSQL's slower performance is due to:
-1. **JOIN Overhead:** Must join `price_history` with `products` to access category information (though category is denormalized in price_history, index lookups still occur)
+1. **Single Table Scan:** While `source_category` is denormalized in `price_history` (eliminating JOIN overhead), the query still requires a full table scan of 9.9 million price history records
 2. **Date Truncation:** PostgreSQL's `DATE_TRUNC` function, while powerful, incurs computational overhead on large datasets
+3. **Aggregation Complexity:** Multiple aggregation functions (COUNT DISTINCT, AVG, MIN, MAX, STDDEV) require additional processing
 
 **Conclusion:** MongoDB demonstrates clear advantages for read-heavy queries where embedded data locality eliminates JOIN overhead.
 
@@ -299,30 +316,34 @@ PostgreSQL's slower performance is due to:
 
 **PostgreSQL Query:**
 ```sql
-WITH rank_comparison AS (
+WITH rank_changes AS (
     SELECT 
-        asin,
-        MIN(CASE WHEN date = (SELECT MAX(date) FROM sales_rank_history s2 
-                             WHERE s2.asin = s1.asin 
-                             AND s2.date >= CURRENT_DATE - INTERVAL '30 days') 
-                 THEN sales_rank END) AS current_rank,
-        MIN(CASE WHEN date = (SELECT MIN(date) FROM sales_rank_history s2 
-                             WHERE s2.asin = s1.asin 
-                             AND s2.date >= CURRENT_DATE - INTERVAL '30 days') 
-                 THEN sales_rank END) AS previous_rank
-    FROM sales_rank_history s1
-    WHERE date >= CURRENT_DATE - INTERVAL '30 days'
-    GROUP BY asin
+        srh.asin,
+        p.title,
+        p.brand,
+        p.source_category as category,
+        srh.date,
+        srh.sales_rank,
+        LAG(srh.sales_rank) OVER (PARTITION BY srh.asin ORDER BY srh.date) as previous_rank,
+        srh.sales_rank - LAG(srh.sales_rank) OVER (PARTITION BY srh.asin ORDER BY srh.date) as rank_change
+    FROM sales_rank_history srh
+    JOIN products p ON srh.asin = p.asin
+    WHERE srh.date >= CURRENT_DATE - INTERVAL '30 days'
+      AND srh.sales_rank IS NOT NULL
 )
 SELECT 
-    p.asin,
-    p.title,
-    p.brand,
-    rc.current_rank - rc.previous_rank AS rank_improvement
-FROM rank_comparison rc
-JOIN products p ON rc.asin = p.asin
-WHERE rc.current_rank IS NOT NULL AND rc.previous_rank IS NOT NULL
-ORDER BY rank_improvement DESC
+    asin,
+    title,
+    brand,
+    category,
+    date,
+    sales_rank,
+    previous_rank,
+    rank_change
+FROM rank_changes
+WHERE rank_change IS NOT NULL 
+  AND rank_change < 0  -- Negative means improvement (lower rank number = better)
+ORDER BY rank_change ASC  -- Most negative = best improvement
 LIMIT 10;
 ```
 
@@ -335,19 +356,54 @@ LIMIT 10;
 ```javascript
 db.products.aggregate([
   { $unwind: "$sales_rank_history" },
-  { $match: { "sales_rank_history.date": { $gte: startDate } } },
+  { $match: {
+      "sales_rank_history.date": { $gte: startDate },
+      "sales_rank_history.sales_rank": { $ne: null }
+  }},
+  { $sort: { asin: 1, "sales_rank_history.date": 1 } },
   { $group: {
       _id: "$asin",
-      current_rank: { $min: { $cond: [{ $eq: ["$sales_rank_history.date", maxDate] }, 
-                                       "$sales_rank_history.sales_rank", null] } },
-      previous_rank: { $min: { $cond: [{ $eq: ["$sales_rank_history.date", minDate] }, 
-                                       "$sales_rank_history.sales_rank", null] } }
+      product: { $first: "$$ROOT" },
+      rank_history: { $push: "$sales_rank_history" }
   }},
   { $project: {
-      rank_improvement: { $subtract: ["$previous_rank", "$current_rank"] }
+      asin: "$_id",
+      title: "$product.title",
+      brand: "$product.brand",
+      category: "$product.category",
+      rank_improvements: {
+          $map: {
+              input: { $range: [1, { $size: "$rank_history" }] },
+              as: "idx",
+              in: {
+                  date: { $arrayElemAt: ["$rank_history.date", "$$idx"] },
+                  sales_rank: { $arrayElemAt: ["$rank_history.sales_rank", "$$idx"] },
+                  previous_rank: { $arrayElemAt: ["$rank_history.sales_rank", { $subtract: ["$$idx", 1] }] },
+                  rank_change: {
+                      $subtract: [
+                          { $arrayElemAt: ["$rank_history.sales_rank", { $subtract: ["$$idx", 1] }] },
+                          { $arrayElemAt: ["$rank_history.sales_rank", "$$idx"] }
+                      ]
+                  }
+              }
+          }
+      }
   }},
-  { $sort: { rank_improvement: -1 } },
-  { $limit: 10 }
+  { $unwind: "$rank_improvements" },
+  { $match: { "rank_improvements.rank_change": { $lt: 0 } } },
+  { $sort: { "rank_improvements.rank_change": 1 } },
+  { $limit: 10 },
+  { $project: {
+      asin: 1,
+      title: 1,
+      brand: 1,
+      category: 1,
+      date: "$rank_improvements.date",
+      sales_rank: "$rank_improvements.sales_rank",
+      previous_rank: "$rank_improvements.previous_rank",
+      rank_change: "$rank_improvements.rank_change",
+      _id: 0
+  }}
 ])
 ```
 
@@ -407,43 +463,58 @@ This comparison highlights a fundamental trade-off: MongoDB's document model pri
 
 #### Query 3: Brand Analysis (All Brands)
 
-**Objective:** Calculate average rating and total review count per brand across all products.
+**Objective:** Calculate average rating and review count metrics per product, grouped by brand, ASIN, and title.
 
 **PostgreSQL Query:**
 ```sql
 SELECT 
-    brand,
-    AVG(rating) AS avg_rating,
-    SUM(review_count) AS total_reviews,
-    COUNT(*) AS product_count
-FROM products
-WHERE brand IS NOT NULL
-GROUP BY brand
-ORDER BY avg_rating DESC;
+    p.brand,
+    p.asin,
+    p.title,
+    AVG(p.rating) as avg_rating,
+    AVG(p.review_count) as avg_review_count,
+    MAX(p.review_count) as max_review_count,
+    COUNT(*) as metric_count
+FROM products p
+WHERE p.brand IS NOT NULL
+GROUP BY p.brand, p.asin, p.title
+ORDER BY p.brand, avg_rating DESC, avg_review_count DESC;
 ```
 
 **Performance:**
 - Execution Time: 0.88 seconds
-- Results: 106,447 rows
+- Results: 106,447 rows (product-level analysis)
 - **Performance Advantage:** 4.45x faster than MongoDB
 
 **MongoDB Aggregation Pipeline:**
 ```javascript
 db.products.aggregate([
-  { $match: { brand: { $exists: true, $ne: null } } },
+  { $match: { brand: { $ne: null } } },
   { $group: {
-      _id: "$brand",
+      _id: { brand: "$brand", asin: "$asin" },
+      title: { $first: "$title" },
       avg_rating: { $avg: "$rating" },
-      total_reviews: { $sum: "$review_count" },
-      product_count: { $sum: 1 }
+      avg_review_count: { $avg: "$review_count" },
+      max_review_count: { $max: "$review_count" },
+      metric_count: { $sum: 1 }
   }},
-  { $sort: { avg_rating: -1 } }
+  { $project: {
+      brand: "$_id.brand",
+      asin: "$_id.asin",
+      title: 1,
+      avg_rating: 1,
+      avg_review_count: 1,
+      max_review_count: 1,
+      metric_count: 1,
+      _id: 0
+  }},
+  { $sort: { brand: 1, avg_rating: -1, avg_review_count: -1 } }
 ])
 ```
 
 **Performance:**
 - Execution Time: 3.91 seconds
-- Results: 106,447 documents
+- Results: 106,447 documents (product-level analysis)
 
 **Analysis:**
 PostgreSQL's superior performance is attributed to:
